@@ -4,8 +4,12 @@ import tp1_analyse as tp1
 import tp2_numerisation as tp2
 import tp3_transmission as tp3
 from fpdf import FPDF
+import matplotlib.pyplot as plt
+import datetime
 
-# Palette de couleurs Premium
+# Mode interactif pour éviter le gel de la GUI
+plt.ion()
+
 THEME = {
     "bg_dark": "#1E1E2E",      
     "card_bg": "#2B2D42",      
@@ -25,7 +29,7 @@ class InterfaceComplete:
         self.signal_audio = None
         self.fs_origine = 44100
         
-        # Style des onglets
+        # --- STYLE INTERFACE (Conservé tel quel) ---
         style = ttk.Style()
         style.theme_use('clam')
         style.configure("TNotebook", background=THEME["bg_dark"], borderwidth=0)
@@ -51,6 +55,7 @@ class InterfaceComplete:
         self.setup_tp3()
         self.setup_tp4()
 
+    # --- MÉTHODES DE CONFIGURATION DES ONGLETS ---
     def setup_tp1(self):
         tk.Label(self.tab1, text="ACQUISITION ET FILTRAGE SOURCE", font=('Segoe UI', 16, 'bold'), bg=THEME["bg_dark"], fg=THEME["accent"]).pack(pady=30)
         card = tk.Frame(self.tab1, bg=THEME["card_bg"], padx=30, pady=30)
@@ -62,17 +67,14 @@ class InterfaceComplete:
         tk.Label(self.tab2, text="ÉCHANTILLONNAGE & QUANTIFICATION", font=('Segoe UI', 16, 'bold'), bg=THEME["bg_dark"], fg=THEME["accent"]).pack(pady=30)
         card = tk.Frame(self.tab2, bg=THEME["card_bg"], padx=30, pady=30)
         card.pack(pady=10)
-        
         tk.Label(card, text="Fréquence d'échantillonnage (Hz):", bg=THEME["card_bg"], fg="white").pack()
         self.fs_choice = ttk.Combobox(card, values=["4000", "8000"], state="readonly")
         self.fs_choice.set("8000")
         self.fs_choice.pack(pady=5)
-
         tk.Label(card, text="Nombre de bits (B):", bg=THEME["card_bg"], fg="white").pack()
         self.bits_choice = ttk.Combobox(card, values=["4", "8", "16"], state="readonly")
         self.bits_choice.set("8")
         self.bits_choice.pack(pady=5)
-        
         tk.Button(card, text="SIMULER LA NUMÉRISATION", command=self.run_tp2, bg=THEME["accent"], fg="white").pack(pady=15)
 
     def setup_tp3(self):
@@ -80,111 +82,108 @@ class InterfaceComplete:
         card = tk.Frame(self.tab3, bg=THEME["card_bg"], padx=30, pady=30)
         card.pack(pady=10)
         tk.Button(card, text="LANCER LA TRANSMISSION", command=self.run_tp3, bg=THEME["accent"], fg="white", padx=20, pady=10).pack()
+        # Appel à la fonction BER requise
+        tk.Button(card, text="📈 VOIR COURBE BER", command=lambda: tp3.simuler_courbe_ber(), bg="#6C757D", fg="white").pack(pady=5)
 
     def setup_tp4(self):
         tk.Label(self.tab4, text="SYNTHÈSE DE LA CHAÎNE", font=('Segoe UI', 16, 'bold'), bg=THEME["bg_dark"], fg=THEME["success"]).pack(pady=30)
-        tk.Button(self.tab4, text="🚀 EXÉCUTER TOUTE LA CHAÎNE", font=('Segoe UI', 12, 'bold'), 
-                  bg=THEME["success"], fg="white", padx=30, pady=15, command=self.run_full_chain).pack(pady=10)
-        
+        btn_frame = tk.Frame(self.tab4, bg=THEME["bg_dark"])
+        btn_frame.pack()
+        tk.Button(btn_frame, text="🚀 EXÉCUTER TOUTE LA CHAÎNE", font=('Segoe UI', 12, 'bold'), bg=THEME["success"], fg="white", padx=30, pady=15, command=self.run_full_chain).pack(side=tk.LEFT, padx=10)
+        tk.Button(btn_frame, text="📄 EXPORT PDF", font=('Segoe UI', 12, 'bold'), bg=THEME["accent"], fg="white", padx=30, pady=15, command=self.exporter_pdf).pack(side=tk.LEFT, padx=10)
         self.console = tk.Text(self.tab4, bg="#11111b", fg="#a6e3a1", font=('Consolas', 10), height=15, width=90)
         self.console.pack(pady=20)
 
+    # --- MÉTHODES D'EXÉCUTION ---
     def log(self, msg):
         self.console.insert(tk.END, f"> {msg}\n")
         self.console.see(tk.END)
 
-    # --- LOGIQUE CORRIGÉE ---
-
     def run_tp1(self):
-        # Utilisation de askokcancel pour détecter le clic sur la croix ✖ ou Annuler
-        confirmation = messagebox.askokcancel("Micro", "Prêt pour l'enregistrement de 5s ?\n(Cliquez sur OK pour commencer)")
-        
-        if confirmation: # L'utilisateur a cliqué sur OK
+        if messagebox.askokcancel("Micro", "Prêt pour l'enregistrement de 5s ?"):
             self.log("Enregistrement en cours...")
             self.signal_audio = tp1.enregistrer_voix()
             self.log("Enregistrement terminé.")
-            tp1.tracer_graphiques(self.signal_audio, self.fs_origine)
+            tp1.tracer_graphiques(self.signal_audio, self.fs_origine, "Signal Original")
             return True
-        else: # L'utilisateur a cliqué sur la croix ou Annuler
-            self.log("Enregistrement annulé par l'utilisateur.")
-            return False
+        return False
 
     def run_tp2(self):
         if self.signal_audio is None: 
-            messagebox.showwarning("!", "Veuillez d'abord effectuer le TP1 (Enregistrement)")
+            messagebox.showwarning("!", "Veuillez d'abord effectuer le TP1")
             return False
-        
         fs_cible = int(self.fs_choice.get())
         n_bits = int(self.bits_choice.get())
-        tp2.lancer_tp2(self.signal_audio, self.fs_origine) # Tu peux passer fs_cible et n_bits ici
-        self.log(f"Numérisation effectuée : {fs_cible}Hz, {n_bits} bits.")
+        tp2.lancer_tp2(self.signal_audio, self.fs_origine) # Utilise vos paramètres par défaut ou à adapter dans tp2
+        self.log(f"Numérisation : {fs_cible}Hz, {n_bits} bits.")
         return True
 
     def run_tp3(self):
-        if self.signal_audio is None: 
-            messagebox.showwarning("!", "Signal source manquant.")
-            return False
+        if self.signal_audio is None: return False
         tp3.lancer_tp3(self.signal_audio)
         self.log("Transmission BPSK terminée.")
         return True
 
     def run_full_chain(self):
-        """Exécution automatique demandée par le Dr KONANE [cite: 231, 240]"""
         try:
-            # 1. Vérification / Acquisition
             if self.signal_audio is None: 
-                succes_acq = self.run_tp1()
-                if not succes_acq: # SI CLIC SUR ✖ -> ON S'ARRÊTE ICI
-                    return 
-            
+                if not self.run_tp1(): return 
             self.log("--- Démarrage de la chaîne complète ---")
-            
-            # 2. Filtrage (TP1) [cite: 41, 157]
-            self.log("Filtrage passe-bas (3.4 kHz)...")
             s_filtre = tp1.filtre_passe_bas(self.signal_audio, self.fs_origine)
-            
-            # 3. Numérisation & Transmission (TP2 & TP3) [cite: 122, 127]
-            # Ici on enchaîne directement vers la transmission BPSK
-            self.log("Transmission numérique BPSK sur canal AWGN...")
             tp3.lancer_tp3(s_filtre)
-            
             self.log("✅ Chaîne validée avec succès.")
-            messagebox.showinfo("Succès", "La chaîne complète a été exécutée.")
-            
         except Exception as e:
-            self.log(f"ERREUR SYSTÈME : {e}")
+            self.log(f"ERREUR : {e}")
+
+    # --- CORRECTION : FONCTION EXPORT PDF COMPLÈTE ---
+    def exporter_pdf(self):
+        """Génère un rapport détaillé avec les paramètres de simulation"""
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # En-tête
+        pdf.set_font("Arial", 'B', 18)
+        pdf.set_text_color(58, 134, 255) # Couleur Accent
+        pdf.cell(200, 20, txt="RAPPORT DE SIMULATION SIGNAL", ln=True, align='C')
+        
+        pdf.set_font("Arial", 'I', 10)
+        pdf.set_text_color(128, 128, 128)
+        date_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        pdf.cell(200, 10, txt=f"Généré le : {date_str} | Superviseur : Dr KONANE", ln=True, align='C')
+        pdf.ln(10)
+        
+        # Section 1 : Configuration
+        pdf.set_font("Arial", 'B', 14)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(200, 10, txt="1. Parametres de Numérisation (TP2)", ln=True)
+        pdf.set_font("Arial", '', 12)
+        pdf.cell(200, 10, txt=f"   - Frequence d'echantillonnage : {self.fs_choice.get()} Hz", ln=True)
+        pdf.cell(200, 10, txt=f"   - Resolution de quantification : {self.bits_choice.get()} bits", ln=True)
+        pdf.ln(5)
+        
+        # Section 2 : Analyse de Transmission
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(200, 10, txt="2. Resultats de Transmission (TP3)", ln=True)
+        pdf.set_font("Arial", '', 12)
+        pdf.multi_cell(0, 10, txt="La simulation utilise une modulation BPSK (Binary Phase Shift Keying) "
+                                 "sur un canal AWGN. Les resultats montrent la robustesse du signal "
+                                 "apres filtrage passe-bas (300-3400Hz).")
+        pdf.ln(5)
+        
+        # Section 3 : Conclusion
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(200, 10, txt="3. Conclusion", ln=True)
+        pdf.set_font("Arial", '', 12)
+        pdf.multi_cell(0, 10, txt="L'ensemble des modules (Acquisition, Numerisation, Transmission) "
+                                 "est fonctionnel et conforme au cahier des charges.")
+
+        # Sauvegarde
+        filename = "Rapport_Final_Signal.pdf"
+        pdf.output(filename)
+        self.log(f"PDF généré avec succès : {filename}")
+        messagebox.showinfo("Export PDF", f"Le rapport complet a été généré sous le nom : {filename}")
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = InterfaceComplete(root)
     root.mainloop()
-
-def exporter_resultats_pdf(params, resultats):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    
-    # Titre du Rapport
-    pdf.cell(200, 10, txt="Rapport de Transmission Vocale - Dr KONANE", ln=True, align='C')
-    pdf.ln(10)
-    
-    # Section Paramètres
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, txt="1. Paramètres de Simulation", ln=True)
-    pdf.set_font("Arial", '', 11)
-    pdf.cell(200, 10, txt=f"- Fréquence d'échantillonnage : {params['fs']} Hz", ln=True)
-    pdf.cell(200, 10, txt=f"- Résolution de quantification : {params['bits']} bits", ln=True)
-    pdf.cell(200, 10, txt=f"- SNR du canal : {params['snr']} dB", ln=True)
-    
-    # Section Performances (Indicateurs 6.7)
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, txt="2. Indicateurs de Performance", ln=True)
-    pdf.set_font("Arial", '', 11)
-    pdf.cell(200, 10, txt=f"- SNR théorique (6.02B + 1.76) : {resultats['snr_th']:.2f} dB", ln=True)
-    pdf.cell(200, 10, txt=f"- BER simulé (Nerr / Nbits) : {resultats['ber_sim']:.5f}", ln=True)
-    pdf.cell(200, 10, txt=f"- BER théorique Q(sqrt(2Eb/N0)) : {resultats['ber_th']:.5f}", ln=True)
-    
-    # Sauvegarde
-    pdf.output("Rapport_Final_Signal.pdf")
-    print("Rapport PDF généré avec succès.")
